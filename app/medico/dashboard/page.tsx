@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react"
 import { motion, AnimatePresence } from "framer-motion"
-import { Users, CalendarDays, Bell, Plus, Check, X, Trash2, Edit3 } from "lucide-react"
+import { Users, CalendarDays, Bell, Plus, Check, X } from "lucide-react"
 import { api } from "@/lib/api"
 import { getUser, logout } from "@/lib/auth"
 import { useRouter } from "next/navigation"

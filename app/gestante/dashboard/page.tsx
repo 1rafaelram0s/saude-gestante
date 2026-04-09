@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react"
 import { motion, AnimatePresence } from "framer-motion"
-import { Calendar, MessageCircle, Bell, Search, Copy, Check, User, ChevronRight } from "lucide-react"
+import { Calendar, MessageCircle, Search, Copy, Check } from "lucide-react"
 import { api } from "@/lib/api"
 import { getUser, logout } from "@/lib/auth"
 import { useRouter } from "next/navigation"
@@ -13,7 +13,7 @@ import { Card } from "@/components/ui/card"
 import { NavBar } from "@/components/features/NavBar"
 import { CARD_COLORS, formatDate } from "@/lib/utils"
 import { toast } from "sonner"
-import { stagger, fadeIn, motion as m } from "@/components/ui/motion"
+import { stagger, fadeIn } from "@/components/ui/motion"
 
 interface DashboardData {
   usuario: { nome: string; email: string; codigoAcompanhante?: string }
