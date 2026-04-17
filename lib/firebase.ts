@@ -13,7 +13,20 @@ const firebaseConfig = {
   measurementId: process.env.NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID,
 }
 
-const isConfigured = Object.values(firebaseConfig).every(Boolean)
+const requiredConfig = {
+  apiKey: firebaseConfig.apiKey,
+  authDomain: firebaseConfig.authDomain,
+  projectId: firebaseConfig.projectId,
+  storageBucket: firebaseConfig.storageBucket,
+  messagingSenderId: firebaseConfig.messagingSenderId,
+  appId: firebaseConfig.appId,
+}
+
+const missingKeys = Object.entries(requiredConfig)
+  .filter(([, value]) => !value)
+  .map(([key]) => key)
+
+const isConfigured = missingKeys.length === 0
 const app = isConfigured ? (getApps().length ? getApp() : initializeApp(firebaseConfig)) : null
 
 export const firebaseApp = app
@@ -27,7 +40,7 @@ export const analyticsPromise =
 export function requireFirebase() {
   if (!auth || !db) {
     throw new Error(
-      "Firebase não configurado. Preencha as variáveis NEXT_PUBLIC_FIREBASE_* em .env.local.",
+      `Firebase não configurado. Variáveis ausentes: ${missingKeys.join(", ") || "desconhecido"}.`,
     )
   }
 
