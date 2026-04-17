@@ -1,3 +1,6 @@
+import { signOut } from "firebase/auth"
+import { auth } from "@/lib/firebase"
+
 export interface AuthUser {
   id: string
   nome: string
@@ -28,6 +31,9 @@ export function getUser(): AuthUser | null {
 export function logout() {
   if (typeof window !== "undefined") {
     localStorage.removeItem(KEY)
+    if (auth) {
+      void signOut(auth).catch(() => undefined)
+    }
     window.location.href = "/"
   }
 }

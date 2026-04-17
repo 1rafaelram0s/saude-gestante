@@ -7,7 +7,7 @@ import { zodResolver } from "@hookform/resolvers/zod"
 import { z } from "zod"
 import { Heart, Eye, EyeOff, ArrowRight, Sparkles } from "lucide-react"
 import { api } from "@/lib/api"
-import { saveUser, getRolePath, getUser } from "@/lib/auth"
+import { saveUser, getRolePath, getUser, type AuthUser } from "@/lib/auth"
 import { useRouter } from "next/navigation"
 import { toast } from "sonner"
 
@@ -42,7 +42,7 @@ export default function HomePage() {
         id: res.user.id,
         nome: res.user.nome,
         email: res.user.email,
-        role: res.user.role as "GESTANTE",
+        role: res.user.role as AuthUser["role"],
         token: res.user.token,
         codigoAcompanhante: res.user.codigoAcompanhante,
       })

@@ -16,11 +16,12 @@ import { toast } from "sonner"
 import { stagger, fadeIn } from "@/components/ui/motion"
 
 interface DashboardData {
-  usuario: { nome: string; email: string; codigoAcompanhante?: string }
+  usuario: { nome: string; email: string; endereco?: string; cartaoSUS?: string; codigoAcompanhante?: string }
   gestacao: { semanaAtual: number; diaAtual: number; progresso: number; icone: string; dum: string }
   proximasConsultas: Array<{ id: string; data: string; hora: string; local: string; observacoes?: string; googleCalendarUrl?: string }>
   cardsInformativos: Array<{ id: string; titulo: string; descricao: string; tipo: string; criadoEm: string }>
   chat: { mensagens: unknown[]; totalNaoLidas: number }
+  medicoVinculado?: { id: string; nome: string } | null
 }
 
 interface Medico { id: string; nome: string; crm: string; especialidade: string }
@@ -40,13 +41,31 @@ export default function GestanteDashboard() {
   const [searchMedico, setSearchMedico] = useState("")
   const [medicos, setMedicos] = useState<Medico[]>([])
   const [loading, setLoading] = useState(true)
+  const [editWeek, setEditWeek] = useState("")
+  const [confirmPassword, setConfirmPassword] = useState("")
+  const [savingWeek, setSavingWeek] = useState(false)
+
+  const loadDashboard = async () => {
+    if (!user) return
+
+    try {
+      const dashboard = await api.gestante.dashboard(user.id) as DashboardData
+      setData(dashboard)
+      setEditWeek(String(dashboard.gestacao.semanaAtual))
+      if (dashboard.medicoVinculado) {
+        setChatMedicoId(dashboard.medicoVinculado.id)
+        setChatMedicoNome(dashboard.medicoVinculado.nome)
+      }
+    } catch {
+      toast.error("Erro ao carregar dashboard")
+    } finally {
+      setLoading(false)
+    }
+  }
 
   useEffect(() => {
     if (!user || user.role !== "GESTANTE") { router.push("/"); return }
-    api.gestante.dashboard(user.id).then(res => {
-      setData(res as DashboardData)
-      setLoading(false)
-    }).catch(() => { toast.error("Erro ao carregar dashboard"); setLoading(false) })
+    void loadDashboard()
   }, [])
 
   const buscarMedicos = async () => {
@@ -71,6 +90,34 @@ export default function GestanteDashboard() {
     setCopied(true)
     setTimeout(() => setCopied(false), 2000)
     toast.success("Código copiado!")
+  }
+
+  const salvarSemana = async () => {
+    if (!user) return
+
+    const novaSemana = Number.parseInt(editWeek, 10)
+
+    if (!Number.isInteger(novaSemana) || novaSemana < 1 || novaSemana > 42) {
+      toast.error("Informe uma semana entre 1 e 42.")
+      return
+    }
+
+    if (!confirmPassword.trim()) {
+      toast.error("Confirme sua senha para salvar.")
+      return
+    }
+
+    setSavingWeek(true)
+    try {
+      await api.gestante.atualizarSemana(user.id, novaSemana, confirmPassword)
+      setConfirmPassword("")
+      await loadDashboard()
+      toast.success("Semana atualizada com sucesso.")
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Erro ao atualizar semana")
+    } finally {
+      setSavingWeek(false)
+    }
   }
 
   if (!user) return null
@@ -269,6 +316,7 @@ export default function GestanteDashboard() {
                     {[
                       { label: "Semana atual", value: `${data?.gestacao.semanaAtual ?? 0}ª semana` },
                       { label: "DUM", value: data?.gestacao.dum ? formatDate(data.gestacao.dum) : "—" },
+                      { label: "Cartão SUS", value: data?.usuario.cartaoSUS ?? "—" },
                       { label: "Endereço", value: data?.usuario.endereco ?? "—" },
                     ].map(item => (
                       <div key={item.label} className="flex justify-between items-center py-2 border-b border-border last:border-0">
@@ -276,6 +324,57 @@ export default function GestanteDashboard() {
                         <span className="text-sm text-white">{item.value}</span>
                       </div>
                     ))}
+                  </div>
+                </Card>
+              </motion.div>
+              <motion.div variants={fadeIn}>
+                <Card>
+                  <div className="flex items-start justify-between gap-4 mb-4">
+                    <div>
+                      <h3 className="text-sm font-semibold text-white">Editar semana</h3>
+                      <p className="text-xs text-muted mt-1">
+                        A alteração exige confirmação com a sua senha.
+                      </p>
+                    </div>
+                    <span className="text-xs px-2 py-1 rounded-full bg-violet-500/10 text-violet-300 border border-violet-500/20">
+                      Semana {data?.gestacao.semanaAtual ?? "—"}
+                    </span>
+                  </div>
+
+                  <div className="space-y-3">
+                    <div>
+                      <label className="text-xs text-muted block mb-1.5">Nova semana gestacional</label>
+                      <input
+                        type="number"
+                        min={1}
+                        max={42}
+                        value={editWeek}
+                        onChange={e => setEditWeek(e.target.value)}
+                        className="field"
+                        placeholder="Ex: 20"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-xs text-muted block mb-1.5">Confirmar com a senha</label>
+                      <input
+                        type="password"
+                        value={confirmPassword}
+                        onChange={e => setConfirmPassword(e.target.value)}
+                        className="field"
+                        placeholder="Sua senha atual"
+                      />
+                    </div>
+                    <button
+                      onClick={salvarSemana}
+                      disabled={savingWeek}
+                      className="btn-primary"
+                    >
+                      {savingWeek ? (
+                        <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                      ) : (
+                        "Salvar semana"
+                      )}
+                    </button>
                   </div>
                 </Card>
               </motion.div>

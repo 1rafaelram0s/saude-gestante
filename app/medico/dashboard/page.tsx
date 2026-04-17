@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react"
 import { motion, AnimatePresence } from "framer-motion"
-import { Users, CalendarDays, Bell, Plus, Check, X } from "lucide-react"
+import { Users, CalendarDays, Bell, Plus, Check, X, Search } from "lucide-react"
 import { api } from "@/lib/api"
 import { getUser, logout } from "@/lib/auth"
 import { useRouter } from "next/navigation"
@@ -14,7 +14,7 @@ import { stagger, fadeIn } from "@/components/ui/motion"
 import { formatDate } from "@/lib/utils"
 import { toast } from "sonner"
 
-interface Gestante { id: string; nome: string; email: string; semanaAtual: number; dum?: string }
+interface Gestante { id: string; nome: string; email: string; cartaoSUS?: string; semanaAtual: number; dum?: string }
 interface Solicitacao { id: string; gestanteId: string; status: string }
 interface DashboardData {
   medico: { nome: string; crm: string; especialidade: string }
@@ -36,28 +36,46 @@ export default function MedicoDashboard() {
   // Agendamento
   const [agendForm, setAgendForm] = useState({ gestanteId: "", data: "", hora: "", local: "", observacoes: "" })
   const [agendResult, setAgendResult] = useState<{ googleCalendarUrl?: string } | null>(null)
+  const [agendSearch, setAgendSearch] = useState("")
 
   // Card form
   const [cardForm, setCardForm] = useState({ gestanteId: "", titulo: "", descricao: "", tipo: "DICA" })
+  const [cardSearch, setCardSearch] = useState("")
+
+  const loadDashboard = async (withSpinner = false) => {
+    if (!user) return
+
+    if (withSpinner) setLoading(true)
+
+    try {
+      const res = await api.medico.dashboard(user.id) as DashboardData
+      setData(res)
+    } catch {
+      toast.error("Erro ao carregar dashboard")
+    } finally {
+      if (withSpinner) setLoading(false)
+    }
+  }
 
   useEffect(() => {
     if (!user || user.role !== "MEDICO") { router.push("/"); return }
-    api.medico.dashboard(user.id).then(res => { setData(res as DashboardData); setLoading(false) })
-      .catch(() => { toast.error("Erro ao carregar dashboard"); setLoading(false) })
+    void loadDashboard(true)
   }, [])
 
   const responderSolicita = async (id: string, acao: "ACEITAR" | "RECUSAR") => {
     try {
       await api.medico.responderSolicitacao(id, acao)
       toast.success(acao === "ACEITAR" ? "Gestante aceita! ✅" : "Solicitação recusada")
-      setData(prev => prev ? {
-        ...prev,
-        solicitacoesPendentes: prev.solicitacoesPendentes.filter(s => s.id !== id)
-      } : prev)
+      await loadDashboard()
     } catch { toast.error("Erro ao responder") }
   }
 
   const agendar = async () => {
+    if (!agendForm.gestanteId) {
+      toast.error("Busque e selecione uma gestante antes de agendar.")
+      return
+    }
+
     try {
       const res = await api.consultas.agendar({ ...agendForm, medicoId: user?.id }) as { consulta: { googleCalendarUrl?: string } }
       setAgendResult(res.consulta)
@@ -66,12 +84,38 @@ export default function MedicoDashboard() {
   }
 
   const criarCard = async () => {
+    if (!cardForm.gestanteId) {
+      toast.error("Busque e selecione uma gestante antes de criar o card.")
+      return
+    }
+
     try {
       await api.cards.criar({ ...cardForm, medicoId: user?.id })
       toast.success("Card criado! ✅")
       setCardForm({ gestanteId: "", titulo: "", descricao: "", tipo: "DICA" })
+      setCardSearch("")
     } catch { toast.error("Erro ao criar card") }
   }
+
+  const normalize = (value: string) =>
+    value.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().trim()
+
+  const filterGestantes = (value: string) => {
+    const query = normalize(value)
+
+    if (!query) return []
+
+    return (data?.gestantes ?? [])
+      .filter(gestante =>
+        normalize(gestante.cartaoSUS ?? "").includes(query),
+      )
+      .slice(0, 5)
+  }
+
+  const gestanteAgendada = data?.gestantes.find(g => g.id === agendForm.gestanteId) ?? null
+  const gestanteCard = data?.gestantes.find(g => g.id === cardForm.gestanteId) ?? null
+  const agendResults = filterGestantes(agendSearch)
+  const cardResults = filterGestantes(cardSearch)
 
   if (!user || loading) return (
     <div className="min-h-screen flex items-center justify-center">
@@ -209,10 +253,46 @@ export default function MedicoDashboard() {
             <motion.div key="consultas" variants={stagger} initial="hidden" animate="show" className="space-y-3">
               <motion.h3 variants={fadeIn} className="text-sm font-semibold text-white">Agendar consulta</motion.h3>
               <motion.div variants={fadeIn} className="space-y-3">
-                <select className="field" value={agendForm.gestanteId} onChange={e => setAgendForm(p => ({ ...p, gestanteId: e.target.value }))}>
-                  <option value="">Selecionar gestante...</option>
-                  {data?.gestantes.map(g => <option key={g.id} value={g.id}>{g.nome}</option>)}
-                </select>
+                <div className="space-y-2">
+                  <div className="relative">
+                    <input
+                      className="field pl-10"
+                      placeholder="Buscar gestante pelo Cartão SUS..."
+                      value={agendSearch}
+                      onChange={e => {
+                        setAgendSearch(e.target.value)
+                        setAgendForm(p => ({ ...p, gestanteId: "" }))
+                      }}
+                    />
+                    <Search className="w-4 h-4 text-muted absolute left-3 top-1/2 -translate-y-1/2" />
+                  </div>
+                  {gestanteAgendada && (
+                    <div className="rounded-xl border border-emerald-500/20 bg-emerald-500/10 px-3 py-2">
+                      <p className="text-sm text-white">{gestanteAgendada.nome}</p>
+                      <p className="text-xs text-muted">SUS: {gestanteAgendada.cartaoSUS || "Não informado"}</p>
+                    </div>
+                  )}
+                  {!gestanteAgendada && agendSearch.trim() && (
+                    <div className="space-y-2">
+                      {agendResults.length > 0 ? agendResults.map(gestante => (
+                        <button
+                          key={gestante.id}
+                          type="button"
+                          onClick={() => {
+                            setAgendForm(p => ({ ...p, gestanteId: gestante.id }))
+                            setAgendSearch(gestante.nome)
+                          }}
+                          className="w-full text-left rounded-xl border border-border px-3 py-2 hover:border-rose-500/30 transition-colors"
+                        >
+                          <p className="text-sm text-white">{gestante.nome}</p>
+                          <p className="text-xs text-muted">SUS: {gestante.cartaoSUS || "Não informado"}</p>
+                        </button>
+                      )) : (
+                        <p className="text-xs text-muted">Nenhuma gestante encontrada.</p>
+                      )}
+                    </div>
+                  )}
+                </div>
                 <div className="grid grid-cols-2 gap-3">
                   <div>
                     <label className="text-xs text-muted block mb-1.5">Data</label>
@@ -243,10 +323,46 @@ export default function MedicoDashboard() {
             <motion.div key="cards" variants={stagger} initial="hidden" animate="show" className="space-y-3">
               <motion.h3 variants={fadeIn} className="text-sm font-semibold text-white">Criar card informativo</motion.h3>
               <motion.div variants={fadeIn} className="space-y-3">
-                <select className="field" value={cardForm.gestanteId} onChange={e => setCardForm(p => ({ ...p, gestanteId: e.target.value }))}>
-                  <option value="">Selecionar gestante...</option>
-                  {data?.gestantes.map(g => <option key={g.id} value={g.id}>{g.nome}</option>)}
-                </select>
+                <div className="space-y-2">
+                  <div className="relative">
+                    <input
+                      className="field pl-10"
+                      placeholder="Buscar gestante pelo Cartão SUS..."
+                      value={cardSearch}
+                      onChange={e => {
+                        setCardSearch(e.target.value)
+                        setCardForm(p => ({ ...p, gestanteId: "" }))
+                      }}
+                    />
+                    <Search className="w-4 h-4 text-muted absolute left-3 top-1/2 -translate-y-1/2" />
+                  </div>
+                  {gestanteCard && (
+                    <div className="rounded-xl border border-emerald-500/20 bg-emerald-500/10 px-3 py-2">
+                      <p className="text-sm text-white">{gestanteCard.nome}</p>
+                      <p className="text-xs text-muted">SUS: {gestanteCard.cartaoSUS || "Não informado"}</p>
+                    </div>
+                  )}
+                  {!gestanteCard && cardSearch.trim() && (
+                    <div className="space-y-2">
+                      {cardResults.length > 0 ? cardResults.map(gestante => (
+                        <button
+                          key={gestante.id}
+                          type="button"
+                          onClick={() => {
+                            setCardForm(p => ({ ...p, gestanteId: gestante.id }))
+                            setCardSearch(gestante.nome)
+                          }}
+                          className="w-full text-left rounded-xl border border-border px-3 py-2 hover:border-rose-500/30 transition-colors"
+                        >
+                          <p className="text-sm text-white">{gestante.nome}</p>
+                          <p className="text-xs text-muted">SUS: {gestante.cartaoSUS || "Não informado"}</p>
+                        </button>
+                      )) : (
+                        <p className="text-xs text-muted">Nenhuma gestante encontrada.</p>
+                      )}
+                    </div>
+                  )}
+                </div>
                 <select className="field" value={cardForm.tipo} onChange={e => setCardForm(p => ({ ...p, tipo: e.target.value }))}>
                   <option value="DICA">💡 Dica</option>
                   <option value="ALERTA">🚨 Alerta</option>
